@@ -1,0 +1,57 @@
+# Rust 项目的标准 .gitignore 文件
+
+# 编译输出
+/target/
+**/target/
+
+# Cargo 锁文件（对于库项目可选，但对于应用项目应该提交）
+# Cargo.lock
+
+# 编译生成的文件
+**/*.rs.bk
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE 配置文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 调试和构建缓存
+**/target/debug/
+**/target/release/
+**/target/doc/
+**/target/.rustc_info.json
+**/target/CACHEDIR.TAG
+**/target/debug/.cargo-lock
+**/target/debug/build/
+**/target/debug/incremental/
+
+# 临时文件
+*.log
+*.tmp
+*.cache
+
+# 环境变量文件
+.env
+.env.local
+
+# 开发工具配置
+.rustfmt.toml
+.clippy.toml
+rust-toolchain.toml
+
+# 项目特定文件（如果有的话）
+*.log
+*.db
+*.sqlite
