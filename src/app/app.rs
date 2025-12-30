@@ -1,7 +1,7 @@
 use crate::editor::Editor;
 
 pub struct App {
-    editor: Editor,
+    pub editor: Editor,
 }
 
 impl App {

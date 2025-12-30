@@ -1,0 +1,245 @@
+# Editor / Document 状态机与命令系统设计文档
+
+> 本文档定义编辑器核心的状态模型、Document 生命周期以及  
+> 命令系统（Command）的结构与执行规则。  
+> 目标是：**解耦 UI、文本存储与用户操作，确保一致性与可维护性。**
+
+---
+
+## 一、核心设计理念
+
+### 1.1 为什么必须区分 Editor 与 Document
+
+- **Editor**：应用级调度者（全局）
+- **Document**：单文件状态容器
+- **Buffer**：文本与文件的物理载体（已定义）
+
+Editor
+├── Document A
+├── Document B
+└── Document C
+
+yaml
+复制代码
+
+**原则：**
+- UI 永远不直接修改 Buffer
+- Editor 永远不直接操作文本
+- Command 是唯一“能改变状态”的入口
+
+---
+
+## 二、Editor 层设计
+
+### 2.1 Editor 的职责
+
+Editor 是**全局协调者**，负责：
+
+- Document 的创建 / 销毁
+- 当前激活文档管理
+- 命令分发
+- 会话与全局状态
+
+### 2.2 Editor 结构定义
+
+```rust
+pub struct Editor {
+    documents: Vec<Document>,
+    active: Option<DocumentId>,
+}
+2.3 Editor 的禁止行为（红线）
+❌ 不保存文本内容
+
+❌ 不关心 Rope / mmap
+
+❌ 不处理 UI 事件细节
+
+三、Document 层设计
+3.1 Document 的职责
+Document 表示 一个文件在编辑器中的完整状态。
+
+它必须知道：
+
+自己的 Buffer
+
+自己是否被修改
+
+自己是否可编辑
+
+与 UI 显示相关的状态
+
+3.2 Document 状态模型
+rust
+复制代码
+pub enum DocumentState {
+    Clean,
+    Dirty,
+    ReadOnly,
+}
+rust
+复制代码
+pub struct Document {
+    id: DocumentId,
+    path: Option<PathBuf>,
+    buffer: Buffer,
+    state: DocumentState,
+}
+3.3 Document 生命周期状态机
+text
+复制代码
+New
+ ↓
+Loaded
+ ↓
+Clean ←──── Save
+ ↓
+Dirty
+ ↓
+Closed
+状态说明：
+
+状态	说明
+New	新建未保存
+Loaded	从磁盘加载
+Clean	与磁盘一致
+Dirty	有未保存修改
+ReadOnly	大文件或权限限制
+
+3.4 状态转移规则（硬约束）
+ReadOnly 不能 → Dirty
+
+Save 只能 Dirty → Clean
+
+Close 必须检查 Dirty
+
+四、命令系统（Command System）
+4.1 为什么需要命令系统
+命令系统解决三个问题：
+
+UI 不直接操作数据
+
+操作可记录 / 回放
+
+状态变化集中管理
+
+4.2 Command 的基本定义
+rust
+复制代码
+pub enum Command {
+    OpenFile(PathBuf),
+    SaveFile,
+    CloseDocument,
+    InsertText { pos: usize, text: String },
+    DeleteRange { start: usize, end: usize },
+    Undo,
+    Redo,
+}
+4.3 Command 执行路径
+text
+复制代码
+UI 事件
+ → 构建 Command
+ → Editor.dispatch()
+ → Document.apply()
+ → Buffer 修改
+ → 状态更新
+UI 不关心执行结果细节，只接收成功 / 失败。
+
+五、Document.apply(Command) 规则
+5.1 Command 应用接口
+rust
+复制代码
+impl Document {
+    pub fn apply(&mut self, cmd: Command) -> Result<()> {
+        // 验证 → 执行 → 更新状态
+    }
+}
+5.2 权限与状态检查（必须）
+在执行前，必须检查：
+
+是否 ReadOnly
+
+是否允许编辑
+
+命令是否适用于当前状态
+
+示例：
+
+Command	ReadOnly	Dirty
+InsertText	❌	✅
+SaveFile	❌	✅
+Close	✅	⚠️
+
+六、Undo / Redo 与命令系统关系
+6.1 Undo 适用范围
+仅 Editable 文档
+
+Large Buffer 禁用
+
+6.2 Undo 记录内容
+记录的是 Command，而不是文本快照
+
+text
+复制代码
+InsertText { pos, text }
+DeleteRange { start, end }
+七、UI 与状态同步原则
+7.1 UI 可观察状态
+UI 只允许读取：
+
+文档标题（含 *）
+
+是否只读
+
+光标位置
+
+行号
+
+7.2 UI 禁止操作
+❌ 直接修改 Document
+
+❌ 直接访问 Buffer
+
+❌ 修改状态标志
+
+八、多文档与标签页行为
+8.1 Tab 与 Document 映射
+text
+复制代码
+Tab 1 → Document A
+Tab 2 → Document B
+关闭 Tab = 请求关闭 Document
+
+8.2 切换文档规则
+切换不触发保存
+
+Dirty 文档保持状态
+
+UI 只更新绑定关系
+
+九、错误处理与用户交互
+9.1 错误类型
+错误	处理方式
+文件打开失败	弹窗
+保存失败	保持 Dirty
+ReadOnly 修改	忽略并提示
+
+十、禁止行为汇总（红线）
+❌ UI 直接操作 Buffer
+
+❌ Command 绕过 Editor
+
+❌ Document 状态被外部修改
+
+❌ 未验证状态直接执行命令
+
+十一、开发阶段验证清单
+ 打开多个文档互不影响
+
+ Dirty 状态准确
+
+ ReadOnly 文档不可编辑
+
+ Undo / Redo 不破坏状态
+
+ 关闭前必检查 Dirty

@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "REditor"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "ropey",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -923,15 +932,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20930a432bbd57a6d55e07976089708d4893f3d556cf42a0d79e9e321fa73b10"
 dependencies = [
  "bytemuck",
-]
-
-[[package]]
-name = "editor-mvp"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "ropey",
 ]
 
 [[package]]

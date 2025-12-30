@@ -1,0 +1,236 @@
+Buffer 与大文件处理设计文档
+
+（buffer_and_large_file.md）
+
+# Buffer 与大文件处理设计文档
+
+> 本文档定义文本编辑器中 Buffer 层的职责、数据结构、状态机以及  
+> 针对大文件的加载、显示与编辑策略。
+
+---
+
+## 一、Buffer 层在整体架构中的位置
+
+
+
+App
+└── Editor
+└── Document
+└── Buffer ← 本文档关注
+└── Ropey / mmap
+
+
+### 1.1 设计目标
+
+- 支持超大文件（≥ 1GB）不崩溃
+- 明确可编辑与只读边界
+- 保证 Ropey 不被滥用
+- 不将复杂度泄露到 UI 层
+
+---
+
+## 二、Buffer 的职责与边界
+
+### 2.1 Buffer 负责
+
+- 文件大小检测
+- 加载策略选择
+- Ropey 初始化
+- mmap 生命周期管理
+- 提供按行 / 区间访问接口
+
+### 2.2 Buffer 不负责
+
+- 语法高亮
+- 光标 / 选择
+- Undo / Redo
+- UI 事件
+
+---
+
+## 三、文件大小分级策略（硬规则）
+
+| 文件大小 | BufferKind | 编辑 | 加载方式 |
+|------|-----------|----|--------|
+| < 50MB | Small | ✅ | 全量加载 Rope |
+| 50–200MB | Medium | ⚠️ | 分块加载 Rope |
+| > 200MB | Large | ❌ | mmap 只读 |
+
+> ⚠️ Large 文件 **禁止进入 Rope 编辑模式**
+
+---
+
+## 四、核心数据结构设计
+
+### 4.1 BufferKind 与 Mode
+
+```rust
+pub enum BufferKind {
+    Small,
+    Medium,
+    Large,
+}
+
+pub enum BufferMode {
+    Editable,
+    ReadOnly,
+}
+
+4.2 Buffer 结构体
+pub struct Buffer {
+    pub kind: BufferKind,
+    pub mode: BufferMode,
+    pub file_size: u64,
+
+    rope: Option<ropey::Rope>,
+    mmap: Option<memmap2::Mmap>,
+}
+
+
+约定：
+
+rope 与 mmap 永远互斥
+
+UI 层永远看不到 mmap
+
+五、Buffer 初始化流程
+5.1 打开文件决策流程
+open_file(path)
+ → stat 文件大小
+ → 选择 BufferKind
+ → 选择 BufferMode
+ → 创建 Buffer
+
+5.2 Small / Medium 文件加载
+fn load_into_rope(path: &Path) -> Result<Rope> {
+    // 使用 BufReader
+    // 分块读取
+    // Rope::from_reader
+}
+
+
+注意：
+
+禁止 fs::read_to_string
+
+禁止一次性分配巨大字符串
+
+5.3 Large 文件 mmap 加载
+fn load_mmap(path: &Path) -> Result<Mmap> {
+    // memmap2::MmapOptions::new()
+    // .map(&file)
+}
+
+
+约束：
+
+只读映射
+
+禁止写入
+
+禁止转成 String
+
+六、Buffer 对外接口设计
+6.1 公共读取接口
+pub enum LineSource<'a> {
+    Rope(ropey::RopeSlice<'a>),
+    Mmap(&'a [u8]),
+}
+
+pub fn get_line(&self, line: usize) -> Option<LineSource>;
+
+
+UI / 高亮 永远通过此接口访问文本
+
+6.2 编辑接口（仅 Editable）
+pub fn insert(&mut self, char_idx: usize, text: &str);
+pub fn delete(&mut self, range: Range<usize>);
+
+
+运行前检查：
+
+mode == Editable
+
+kind != Large
+
+七、大文件（Large）显示策略
+7.1 行索引构建（只读）
+mmap 文件
+ → 扫描 '\n'
+ → 构建 行起始偏移表
+
+
+只做一次
+
+使用 Vec<u64>
+
+7.2 按行读取（零拷贝）
+fn get_line_from_mmap(line: usize) -> &[u8];
+
+
+返回 slice
+
+不分配
+
+不复制
+
+八、与语法高亮的交互
+Buffer 类型	高亮策略
+Small	全功能
+Medium	可见行
+Large	禁用
+
+Large 文件只使用统一前景色。
+
+九、Undo / Redo 策略
+
+仅 Small / Medium 启用
+
+Large 禁用
+
+Medium 可设置最大操作记录数
+
+十、错误与边界处理
+10.1 必须显式处理的错误
+
+文件读取失败
+
+mmap 失败
+
+UTF-8 解码失败
+
+10.2 UTF-8 处理策略
+
+Ropey 只接受 UTF-8
+
+非 UTF-8 文件：
+
+尝试检测编码
+
+否则回退只读字节视图
+
+十一、Buffer 生命周期
+create Buffer
+ → 使用
+ → 文档关闭
+ → drop Rope / unmap mmap
+
+十二、禁止行为（红线）
+
+❌ Large 文件进入 Rope
+
+❌ mmap 转 String
+
+❌ UI 层直接访问 Rope / mmap
+
+❌ 每帧扫描全文
+
+十三、调试与验证清单
+
+ 打开 1GB 文件不崩溃
+
+ 滚动不卡顿
+
+ 小文件编辑正常
+
+ Rope 内存无爆炸

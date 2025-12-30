@@ -1,7 +1,8 @@
 use crate::document::Document;
+use crate::gui::editor_view;
 
 pub struct Editor {
-    document: Document,
+    pub document: Document,
 }
 
 impl Editor {
@@ -13,7 +14,7 @@ impl Editor {
 
     pub fn ui(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            crate::editor::view::editor_view(ui, &self.document);
+            editor_view(ui, &self.document);
         });
     }
 }
