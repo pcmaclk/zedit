@@ -11,5 +11,10 @@ pub fn editor_view(ui: &mut egui::Ui, document: &Document) {
                     ui.label(line);
                 }
             }
+            
+            // 如果文档为空，显示提示
+            if line_count == 0 {
+                ui.label("空文档");
+            }
         });
 }

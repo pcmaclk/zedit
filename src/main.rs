@@ -2,7 +2,6 @@ mod app;
 mod document;
 mod editor;
 mod gui;
-mod i18n;
 mod io;
 mod plugin;
 

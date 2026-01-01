@@ -34,11 +34,17 @@ impl MainWindow {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("文件", |ui| {
                     if ui.button("打开").clicked() {
-                        // TODO: 打开文件对话框
+                        let mut app = self.app.borrow_mut();
+                        if app.editor.open_file() {
+                            println!("文件打开成功");
+                        }
                         ui.close_menu();
                     }
                     if ui.button("保存").clicked() {
-                        // TODO: 保存文件
+                        let mut app = self.app.borrow_mut();
+                        if app.editor.save_file() {
+                            println!("文件保存成功");
+                        }
                         ui.close_menu();
                     }
                     ui.separator();
@@ -73,10 +79,12 @@ impl MainWindow {
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("📂 打开").clicked() {
-                    // TODO: 打开文件
+                    let mut app = self.app.borrow_mut();
+                    app.editor.open_file();
                 }
                 if ui.button("💾 保存").clicked() {
-                    // TODO: 保存文件
+                    let mut app = self.app.borrow_mut();
+                    app.editor.save_file();
                 }
                 ui.separator();
                 if ui.button("↶ 撤销").clicked() {
@@ -96,8 +104,11 @@ impl MainWindow {
     fn draw_tabs(&self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                // TODO: 显示多个文档标签
-                ui.label("[未命名]");
+                let app = self.app.borrow();
+                let file_name = app.editor.document.get_file_name();
+                let dirty_marker = if app.editor.document.is_dirty() { " *" } else { "" };
+                ui.label(format!("{}{}", file_name, dirty_marker));
+                
                 if ui.button("+").clicked() {
                     // TODO: 新建文档
                 }
@@ -129,7 +140,12 @@ impl MainWindow {
                 ui.separator();
 
                 // 状态
-                ui.label("就绪");
+                let app = self.app.borrow();
+                if app.editor.document.is_dirty() {
+                    ui.label("已修改");
+                } else {
+                    ui.label("就绪");
+                }
             });
         });
     }
